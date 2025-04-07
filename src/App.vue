@@ -71,10 +71,11 @@
       <button @click="downloadPDF">Export Report (PDF)</button>
     </div>
 
-    <!-- Modal for report export -->
-    <div v-if="showReportModal" class="modal-overlay">
-      <div class="modal">
-        <h2>Export Report Options</h2>
+<!-- Modal for report export -->
+<div v-if="showReportModal" class="modal-overlay">
+  <div :class="['report-modal', darkMode ? 'dark' : '']">
+    <!-- Modal content -->
+    <h2>Export Report Options</h2>
 
         <label>
           Breakdown Frequency:
@@ -152,9 +153,23 @@ const exportFrequency = ref('yearly')
 let investmentChart = null
 const breakdownData = ref([])
 
+const closeModal = () => {
+  showReportModal.value = false;
+};
+const handleKeyDown = (event) => {
+  if (event.key === 'Escape' && showReportModal.value) {
+    closeModal();
+  }
+};
+
+
+
 onMounted(() => {
   generateProjection();
+
+  window.addEventListener('keydown', handleKeyDown);
 });
+
 
 
 // Format currency
@@ -490,6 +505,47 @@ const generateCSVReport = () => {
   text-align: left; /* switch to left for DARK mode */
   color: #000;
 }
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.6); /* dimmed background */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+
+.report-modal.dark {
+  background-color: #1e1e1e;
+  color: #f0f0f0;
+  box-shadow: 0 4px 20px rgba(255, 255, 255, 0.1);
+}
+
+/* Keep your input/button styling here */
+.report-modal select,
+.report-modal input,
+.report-modal button {
+  padding: 0.5rem;
+  margin-top: 1rem;
+  border-radius: 4px;
+  width: 100%;
+  transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+}
+
+.report-modal.dark select,
+.report-modal.dark input,
+.report-modal.dark button {
+  background-color: #333;
+  color: #f0f0f0;
+  border: 1px solid #555;
+}
+
+
 
 
 
