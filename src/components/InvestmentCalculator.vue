@@ -1,5 +1,5 @@
 <template>
-    <div :class="['app', darkMode ? 'dark' : '']">
+    <div class="app">
       <div class="header">
         <h1>Investment Growth Calculator</h1>
         <label class="switch" :class="{ dark: darkMode }" :title="darkMode ? 'Switch to Light' : 'Switch to Dark'">
@@ -122,318 +122,324 @@
   </template>
   
   <script setup>
-  import { ref, watch, onMounted } from 'vue'
-  import { Chart, registerables } from 'chart.js'
-  import html2pdf from 'html2pdf.js'
-  
-  Chart.register(...registerables)
-  
-  // State
-  const darkMode = ref(true)
-  const initialInvestment = ref(1000)
-  const monthlyContribution = ref(500)
-  const growthRate = ref(7)
-  const years = ref(30)
-  const compoundingFrequency = ref('yearly')
-  
-  const totalInvested = ref(0)
-  const finalAccountValue = ref(0)
-  const totalInterest = ref(0)
-  
-  const animatedTotalInvested = ref(0)
-  const animatedTotalInterest = ref(0)
-  const animatedFinalAccountValue = ref(0)
-  
-  const showReportModal = ref(false)
-  const selectedReportOption = ref('')
-  const customStartYear = ref(new Date().getFullYear())
-  const customEndYear = ref(new Date().getFullYear() + 10)
-  const exportFrequency = ref('yearly')
-  
-  let investmentChart = null
-  const breakdownData = ref([])
-  
-  const closeModal = () => {
-    showReportModal.value = false;
-  };
-  const handleKeyDown = (event) => {
-    if (event.key === 'Escape' && showReportModal.value) {
-      closeModal();
-    }
-  };
-  
-  
-  
-  onMounted(() => {
-    generateProjection();
-  
-    window.addEventListener('keydown', handleKeyDown);
-  });
-  
-  
-  
-  // Format currency
-  const formatCurrency = (value) => {
-    if (isNaN(value)) return '—'
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: 0,
-    }).format(value)
+import { ref, watch, onMounted, onActivated, nextTick } from 'vue'
+import { Chart, registerables } from 'chart.js'
+import html2pdf from 'html2pdf.js'
+
+Chart.register(...registerables)
+
+// === State ===
+const darkMode = ref(true)
+const initialInvestment = ref(1000)
+const monthlyContribution = ref(500)
+const growthRate = ref(7)
+const years = ref(30)
+const compoundingFrequency = ref('yearly')
+
+const totalInvested = ref(0)
+const finalAccountValue = ref(0)
+const totalInterest = ref(0)
+
+const animatedTotalInvested = ref(0)
+const animatedTotalInterest = ref(0)
+const animatedFinalAccountValue = ref(0)
+
+const showReportModal = ref(false)
+const selectedReportOption = ref('')
+const customStartYear = ref(new Date().getFullYear())
+const customEndYear = ref(new Date().getFullYear() + 10)
+const exportFrequency = ref('yearly')
+
+let investmentChart = null
+const breakdownData = ref([])
+
+// === Lifecycle Hooks ===
+onMounted(async () => {
+  document.body.classList.add('dark')
+  await nextTick()
+  generateProjection()
+  window.addEventListener('keydown', handleKeyDown)
+})
+
+onActivated(async () => {
+  await nextTick()
+  generateProjection()
+})
+
+// === Handlers ===
+const closeModal = () => {
+  showReportModal.value = false
+}
+
+const handleKeyDown = (event) => {
+  if (event.key === 'Escape' && showReportModal.value) {
+    closeModal()
   }
-  
-  // Animation
-  const animateValue = (targetRef, newValue) => {
-    const duration = 800
-    const frameDuration = 1000 / 60
-    const totalFrames = Math.round(duration / frameDuration)
-    const startValue = targetRef.value
-    const increment = (newValue - startValue) / totalFrames
-    let frame = 0
-  
-    const counter = setInterval(() => {
-      frame++
-      targetRef.value = Math.round(startValue + increment * frame)
-      if (frame === totalFrames) {
-        targetRef.value = Math.round(newValue)
-        clearInterval(counter)
-      }
-    }, frameDuration)
+}
+
+// === Helpers ===
+const formatCurrency = (value) => {
+  if (isNaN(value)) return '—'
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 0,
+  }).format(value)
+}
+
+const getGradient = (ctx, color) => {
+  const gradient = ctx.createLinearGradient(0, 0, 0, 400)
+  gradient.addColorStop(0, color)
+  gradient.addColorStop(1, 'rgba(255, 255, 255, 0)')
+  return gradient
+}
+
+const animateValue = (targetRef, newValue) => {
+  const duration = 800
+  const frameDuration = 1000 / 60
+  const totalFrames = Math.round(duration / frameDuration)
+  const startValue = targetRef.value
+  const increment = (newValue - startValue) / totalFrames
+  let frame = 0
+
+  const counter = setInterval(() => {
+    frame++
+    targetRef.value = Math.round(startValue + increment * frame)
+    if (frame === totalFrames) {
+      targetRef.value = Math.round(newValue)
+      clearInterval(counter)
+    }
+  }, frameDuration)
+}
+
+// === Main Logic ===
+const generateProjection = () => {
+  const canvas = document.getElementById('investmentChart')
+  if (!canvas) {
+    console.warn('Canvas not found, skipping chart generation.')
+    return
   }
-  
-  // Generate chart data
-  const generateProjection = () => {
-    const lineColor = darkMode.value ? 'rgba(75, 192, 192, 1)' : 'rgba(54, 162, 235, 1)';
-    const fillColor = darkMode.value ? 'rgba(75, 192, 192, 0.2)' : 'rgba(54, 162, 235, 0.2)';
-    const investedLineColor = darkMode.value ? 'rgba(255, 99, 132, 1)' : 'rgba(255, 99, 132, 1)';
-    const investedFillColor = darkMode.value ? 'rgba(255, 99, 132, 0.2)' : 'rgba(255, 99, 132, 0.2)';
-    const labels = []
-    const totalInvestedData = []
-    const accountValueData = []
-    breakdownData.value = []
-  
-    let currentValue = initialInvestment.value
-    let cumulativeContributions = initialInvestment.value
-  
-    const compoundingPeriodsPerYear = compoundingFrequency.value === 'monthly' ? 12 : 1
-    const totalPeriods = years.value * compoundingPeriodsPerYear
-    const periodicContribution = compoundingFrequency.value === 'monthly'
-      ? monthlyContribution.value
-      : monthlyContribution.value * 12
-  
-    for (let period = 1; period <= totalPeriods; period++) {
-      currentValue = (currentValue + periodicContribution) * (1 + (growthRate.value / 100 / compoundingPeriodsPerYear))
-      cumulativeContributions += periodicContribution
-  
-      const interestEarned = Math.round(currentValue - cumulativeContributions)
-      const label = compoundingFrequency.value === 'monthly' ? `Month ${period}` : `Year ${period}`
-  
-      breakdownData.value.push({
-        period: label,
-        totalContributions: Math.round(cumulativeContributions),
-        interestEarned,
-        totalValue: Math.round(currentValue),
-      })
-  
-      labels.push(label)
-      totalInvestedData.push(Math.round(cumulativeContributions))
-      accountValueData.push(Math.round(currentValue))
-    }
-  
-    if (investmentChart) investmentChart.destroy()
-  
-    const ctx = document.getElementById('investmentChart').getContext('2d')
-    investmentChart = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels,
-        datasets: [
-          {
-            label: 'User Contributions ($):',
-            data: totalInvestedData,
-            borderColor: investedLineColor,
-            backgroundColor: investedFillColor,
-            fill: true,
-            tension: 0.4,
-            hoverBorderWidth: 3,
-            hoverBorderColor: 'rgba(255, 206, 86, 1)',
-            pointHoverRadius: 6,
-            pointHoverBorderColor: 'rgba(255, 206, 86, 1)',
-            pointHoverBackgroundColor: 'rgba(255, 206, 86, 0.8)',
-  
-          },
-          {
-            label: 'Total Value ($):',
-            data: accountValueData,
-            borderColor: lineColor,
-            backgroundColor: getGradient(ctx, fillColor),
-            fill: true,
-            tension: 0.4,
-            hoverBorderWidth: 3,
-            hoverBorderColor: 'rgba(255, 206, 86, 1)',
-            pointHoverRadius: 6,
-            pointHoverBorderColor: 'rgba(255, 206, 86, 1)',
-            pointHoverBackgroundColor: 'rgba(255, 206, 86, 0.8)',
-  
-          },
-        ],
-      },
-      options: {
-    responsive: true,
-    maintainAspectRatio: false, // make it fluid!
-    animation: {
-    duration: 1500,
-    easing: 'easeOutBounce',
-    animateScale: true,
-    animateRotate: true,
-    onComplete: () => {
-      console.log('Animation complete!')
-    }
-  },
-  
-  plugins: {
-    legend: { display: true },
-    tooltip: {
-      mode: 'nearest',
-      intersect: false,
-      position: 'nearest',
-      callbacks: {
-        label: (context) => `${context.dataset.label}: ${formatCurrency(context.parsed.y)}`
-      }
+
+  if (investmentChart) {
+    investmentChart.destroy()
+    investmentChart = null
+  }
+
+  const ctx = canvas.getContext('2d')
+
+  const lineColor = darkMode.value ? 'rgba(75, 192, 192, 1)' : 'rgba(54, 162, 235, 1)'
+  const fillColor = darkMode.value ? 'rgba(75, 192, 192, 0.2)' : 'rgba(54, 162, 235, 0.2)'
+  const investedLineColor = darkMode.value ? 'rgba(255, 99, 132, 1)' : 'rgba(255, 99, 132, 1)'
+  const investedFillColor = darkMode.value ? 'rgba(255, 99, 132, 0.2)' : 'rgba(255, 99, 132, 0.2)'
+
+  const labels = []
+  const totalInvestedData = []
+  const accountValueData = []
+  breakdownData.value = []
+
+  let currentValue = initialInvestment.value
+  let cumulativeContributions = initialInvestment.value
+
+  const compoundingPeriodsPerYear = compoundingFrequency.value === 'monthly' ? 12 : 1
+  const totalPeriods = years.value * compoundingPeriodsPerYear
+  const periodicContribution = compoundingFrequency.value === 'monthly'
+    ? monthlyContribution.value
+    : monthlyContribution.value * 12
+
+  for (let period = 1; period <= totalPeriods; period++) {
+    currentValue = (currentValue + periodicContribution) * (1 + (growthRate.value / 100 / compoundingPeriodsPerYear))
+    cumulativeContributions += periodicContribution
+
+    const interestEarned = Math.round(currentValue - cumulativeContributions)
+    const label = compoundingFrequency.value === 'monthly' ? `Month ${period}` : `Year ${period}`
+
+    breakdownData.value.push({
+      period: label,
+      totalContributions: Math.round(cumulativeContributions),
+      interestEarned,
+      totalValue: Math.round(currentValue),
+    })
+
+    labels.push(label)
+    totalInvestedData.push(Math.round(cumulativeContributions))
+    accountValueData.push(Math.round(currentValue))
+  }
+
+  investmentChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'User Contributions ($):',
+          data: totalInvestedData,
+          borderColor: investedLineColor,
+          backgroundColor: investedFillColor,
+          fill: true,
+          tension: 0.4,
+          pointRadius: 0,
+        },
+        {
+          label: 'Total Value ($):',
+          data: accountValueData,
+          borderColor: lineColor,
+          backgroundColor: getGradient(ctx, fillColor),
+          fill: true,
+          tension: 0.4,
+          pointRadius: 0,
+        },
+      ],
     },
-  },
-  interaction: {
-    mode: 'nearest',
-    axis: 'x',
-    intersect: false
-  },
-  
-  
-    scales: {
-      y: {
-        ticks: {
-          callback: (value) => formatCurrency(value),
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: {
+        duration: 1500,
+        easing: 'easeOutBounce',
+        animateScale: true,
+        animateRotate: true,
+      },
+      plugins: {
+        legend: { display: true },
+        tooltip: {
+          mode: 'nearest',
+          intersect: false,
+          position: 'nearest',
+          callbacks: {
+            label: (context) => `${context.dataset.label}: ${formatCurrency(context.parsed.y)}`,
+          },
+        },
+      },
+      interaction: {
+        mode: 'nearest',
+        axis: 'x',
+        intersect: false,
+      },
+      scales: {
+        y: {
+          ticks: {
+            callback: (value) => formatCurrency(value),
+          },
         },
       },
     },
+  })
+
+  totalInvested.value = cumulativeContributions
+  finalAccountValue.value = currentValue
+  totalInterest.value = currentValue - cumulativeContributions
+}
+
+// === Watchers ===
+watch(totalInvested, (newVal) => animateValue(animatedTotalInvested, newVal))
+watch(finalAccountValue, (newVal) => animateValue(animatedFinalAccountValue, newVal))
+watch(totalInterest, (newVal) => animateValue(animatedTotalInterest, newVal))
+watch(darkMode, (newVal) => {
+  if (newVal) {
+    document.body.classList.add('dark')
+  } else {
+    document.body.classList.remove('dark')
   }
-  
-    })
-  
-    totalInvested.value = cumulativeContributions
-    finalAccountValue.value = currentValue
-    totalInterest.value = currentValue - cumulativeContributions
+  generateProjection()
+})
+
+// === PDF Export ===
+const downloadPDF = () => {
+  const element = document.querySelector('.chart-summary-container')
+  html2pdf().from(element).save('investment_report.pdf')
+}
+
+// === Reset Calculator ===
+const resetCalculator = () => {
+  initialInvestment.value = 1000
+  monthlyContribution.value = 0
+  growthRate.value = 7
+  years.value = 30
+  compoundingFrequency.value = 'yearly'
+
+  totalInvested.value = 0
+  finalAccountValue.value = 0
+  totalInterest.value = 0
+
+  animatedTotalInvested.value = 0
+  animatedFinalAccountValue.value = 0
+  animatedTotalInterest.value = 0
+
+  breakdownData.value = []
+
+  if (investmentChart) {
+    investmentChart.destroy()
+    investmentChart = null
   }
-  
-  // Helpers
-  const getGradient = (ctx, color) => {
-    const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-    gradient.addColorStop(0, color);
-    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-    return gradient;
-  };
-  
-  watch(totalInvested, (newVal) => animateValue(animatedTotalInvested, newVal))
-  watch(finalAccountValue, (newVal) => animateValue(animatedFinalAccountValue, newVal))
-  watch(totalInterest, (newVal) => animateValue(animatedTotalInterest, newVal))
-  watch(darkMode, () => {
-    generateProjection();
-  });
-  
-  
-  // PDF Export
-  const downloadPDF = () => {
-    const element = document.querySelector('.chart-summary-container')
-    html2pdf().from(element).save('investment_report.pdf')
+}
+
+// === CSV Export ===
+const generateCSVReport = () => {
+  let startYear = new Date().getFullYear()
+  let endYear = new Date().getFullYear()
+
+  if (!selectedReportOption.value) {
+    alert('Please select a range.')
+    return
   }
-  
-  // Reset
-  const resetCalculator = () => {
-    initialInvestment.value = 1000
-    monthlyContribution.value = 0
-    growthRate.value = 7
-    years.value = 30
-    compoundingFrequency.value = 'yearly'
-  
-    totalInvested.value = 0
-    finalAccountValue.value = 0
-    totalInterest.value = 0
-  
-    animatedTotalInvested.value = 0
-    animatedFinalAccountValue.value = 0
-    animatedTotalInterest.value = 0
-  
-    breakdownData.value = []
-  
-    if (investmentChart) {
-      investmentChart.destroy()
-      investmentChart = null
-    }
-  }
-  
-  // CSV Export
-  const generateCSVReport = () => {
-    let startYear = new Date().getFullYear()
-    let endYear = new Date().getFullYear()
-  
-    if (!selectedReportOption.value) {
-      alert('Please select a range.')
+
+  if (selectedReportOption.value === 'custom') {
+    if (!customStartYear.value || !customEndYear.value || customEndYear.value < customStartYear.value) {
+      alert('Please enter a valid custom year range.')
       return
     }
-  
-    if (selectedReportOption.value === 'custom') {
-      if (!customStartYear.value || !customEndYear.value || customEndYear.value < customStartYear.value) {
-        alert('Please enter a valid custom year range.')
-        return
-      }
-      startYear = customStartYear.value
-      endYear = customEndYear.value
-    } else {
-      endYear = startYear + parseInt(selectedReportOption.value)
-    }
-  
-    const reportRows = breakdownData.value.filter(row => {
-      const isCorrectPeriod = exportFrequency.value === 'yearly' ? row.period.includes('Year') : row.period.includes('Month')
-      if (!isCorrectPeriod) return false
-  
-      const match = row.period.match(/(?:Year|Month) (\d+)/)
-      if (!match) return false
-  
-      const offset = parseInt(match[1]) - 1
-      const periodYear = new Date().getFullYear() + Math.floor(offset / (exportFrequency.value === 'monthly' ? 12 : 1))
-  
-      return periodYear >= startYear && periodYear <= endYear
-    })
-  
-    if (!reportRows.length) {
-      alert('No data available for the selected range.')
-      showReportModal.value = false
-      return
-    }
-  
-    let csvContent = 'data:text/csv;charset=utf-8,'
-    csvContent += `Investment Report (${exportFrequency.value}) for ${startYear} - ${endYear}\n\n`
-    csvContent += `Initial Investment:,${formatCurrency(initialInvestment.value)}\n`
-    csvContent += `Monthly Contribution:,${formatCurrency(monthlyContribution.value)}\n`
-    csvContent += `Annual Growth Rate:,${growthRate.value}%\n`
-    csvContent += `Compounding Frequency:,${compoundingFrequency.value}\n\n`
-    csvContent += 'Period,Total Contributions,Interest Earned,Total Value\n'
-  
-    reportRows.forEach(row => {
-      csvContent += `${row.period},"${formatCurrency(row.totalContributions)}","${formatCurrency(row.interestEarned)}","${formatCurrency(row.totalValue)}"\n`
-    })
-  
-    const encodedUri = encodeURI(csvContent)
-    const link = document.createElement('a')
-    link.setAttribute('href', encodedUri)
-    link.setAttribute('download', `investment_report_${startYear}-${endYear}.csv`)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-  
+    startYear = customStartYear.value
+    endYear = customEndYear.value
+  } else {
+    endYear = startYear + parseInt(selectedReportOption.value)
+  }
+
+  const reportRows = breakdownData.value.filter(row => {
+    const isCorrectPeriod = exportFrequency.value === 'yearly'
+      ? row.period.includes('Year')
+      : row.period.includes('Month')
+
+    if (!isCorrectPeriod) return false
+
+    const match = row.period.match(/(?:Year|Month) (\d+)/)
+    if (!match) return false
+
+    const offset = parseInt(match[1]) - 1
+    const periodYear = new Date().getFullYear() + Math.floor(offset / (exportFrequency.value === 'monthly' ? 12 : 1))
+
+    return periodYear >= startYear && periodYear <= endYear
+  })
+
+  if (!reportRows.length) {
+    alert('No data available for the selected range.')
     showReportModal.value = false
+    return
   }
-  </script>
+
+  let csvContent = 'data:text/csv;charset=utf-8,'
+  csvContent += `Investment Report (${exportFrequency.value}) for ${startYear} - ${endYear}\n\n`
+  csvContent += `Initial Investment:,${formatCurrency(initialInvestment.value)}\n`
+  csvContent += `Monthly Contribution:,${formatCurrency(monthlyContribution.value)}\n`
+  csvContent += `Annual Growth Rate:,${growthRate.value}%\n`
+  csvContent += `Compounding Frequency:,${compoundingFrequency.value}\n\n`
+  csvContent += 'Period,Total Contributions,Interest Earned,Total Value\n'
+
+  reportRows.forEach(row => {
+    csvContent += `${row.period},"${formatCurrency(row.totalContributions)}","${formatCurrency(row.interestEarned)}","${formatCurrency(row.totalValue)}"\n`
+  })
+
+  const encodedUri = encodeURI(csvContent)
+  const link = document.createElement('a')
+  link.setAttribute('href', encodedUri)
+  link.setAttribute('download', `investment_report_${startYear}-${endYear}.csv`)
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+
+  showReportModal.value = false
+}
+</script>
+
   
   <style scoped>
   /* Toggle Switch Styling */
@@ -561,12 +567,12 @@
   
   .app {
     width: 100%;
-    max-width: 100%;
-    margin: 0 auto;
+    max-width: 900px;
+    margin: 2rem auto;
     font-family: Arial, sans-serif;
     padding: 2rem;
-    background: #ffffff;
-    color: #333;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     transition: background 0.3s, color 0.3s;
     position: relative;
     text-align: center;
@@ -574,12 +580,6 @@
     animation: fadeIn 0.8s ease-out forwards;
     min-height: 100vh; /* Full screen height */
     box-sizing: border-box;
-  }
-  
-  
-  .dark {
-    background: #121212;
-    color: #f0f0f0;
   }
   
   .header {
@@ -675,17 +675,18 @@
   }
   
   .chart-container {
-    flex: 1 1 65%;
-    width: 100%;
-    max-width: 100%;
-    display: flex;
-    justify-content: center;
-  }
-  
-  canvas {
-    width: 100%;
-    height: auto;
-  }
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  min-height: 300px; /* Ensure min height for stability */
+}
+
+canvas {
+  display: block;
+  width: 100% !important;
+  height: auto !important;
+}
+
   
   /* Action Buttons */
   .button-group {
@@ -755,5 +756,45 @@
     justify-content: space-between;
   }
   
+  body.dark {
+  background: #121212;
+  color: #f0f0f0;
+}
+
+body.dark .app {
+  background: #1e1e1e;
+  color: #f0f0f0;
+  box-shadow: none;
+}
+
+body.dark .form-stacked label,
+body.dark .summary,
+body.dark .header h1 {
+  color: #f0f0f0;
+}
+
+body.dark input,
+body.dark select,
+body.dark button {
+  background-color: #2c2c2c;
+  color: #e0e0e0;
+  border: 1px solid #444;
+}
+
+body.dark .report-modal {
+  background-color: #1e1e1e;
+  color: #f0f0f0;
+}
+
+body.dark th,
+body.dark td {
+  background: #1e1e1e;
+  color: #e0e0e0;
+}
+
+body.dark .chart-container {
+  background: transparent;
+}
+
   </style>
   
