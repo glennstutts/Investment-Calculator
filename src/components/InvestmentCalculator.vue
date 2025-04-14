@@ -1,36 +1,64 @@
 <template>
-    <div class="investment-calculator">
+    <div class="calculator-container">
       <div class="header">
         <h1>Investment Growth Calculator</h1>
       </div>
   
       <div class="form-stacked">
-        <label>
+        <!-- Inputs with validation -->
+        <label for="initialInvestment">
           Initial Investment ($):
-          <input type="number" v-model.number="initialInvestment" />
+          <input id="initialInvestment" type="number" v-model.number="initialInvestment" @input="validateInput('initialInvestment')" />
+          <small>e.g., enter numbers only. No symbols.</small>
+          <span v-if="errors.initialInvestment" class="error">{{ errors.initialInvestment }}</span>
         </label>
-        <label>
+  
+        <label for="monthlyContribution">
           Monthly Contribution ($):
-          <input type="number" v-model.number="monthlyContribution" />
+          <input id="monthlyContribution" type="number" v-model.number="monthlyContribution" @input="validateInput('monthlyContribution')" />
+          <small>e.g., enter numbers only. No symbols.</small>
+          <span v-if="errors.monthlyContribution" class="error">{{ errors.monthlyContribution }}</span>
         </label>
-        <label>
+  
+        <label for="growthRate">
           Annual Growth Rate (%):
-          <input type="number" v-model.number="growthRate" />
+          <input id="growthRate" type="number" v-model.number="growthRate" @input="validateInput('growthRate')" />
+          <small>e.g., enter numbers only. No symbols.</small>
+          <span v-if="errors.growthRate" class="error">{{ errors.growthRate }}</span>
         </label>
-        <label>
+  
+        <label for="years">
           Number of Years:
-          <input type="number" v-model.number="years" />
+          <input id="years" type="number" v-model.number="years" @input="validateInput('years')" />
+          <small>e.g., enter numbers only. No symbols.</small>
+          <span v-if="errors.years" class="error">{{ errors.years }}</span>
         </label>
-        <label>
+  
+        <label for="compoundingFrequency">
+            
           Compounding Frequency:
-          <select v-model="compoundingFrequency">
+          
+          <select id="compoundingFrequency" v-model="compoundingFrequency">
             <option value="yearly">Yearly</option>
             <option value="monthly">Monthly</option>
           </select>
+          <small>e.g., select Yearly or Monthly</small>
+        </label>
+  
+        <!-- Inflation Toggle -->
+        <label>
+          <input type="checkbox" v-model="inflationAdjustmentEnabled" /> Apply Inflation Adjustment
+        </label>
+  
+        <label v-if="inflationAdjustmentEnabled" for="customInflationRate">
+          Inflation Rate (%):
+          <input id="customInflationRate" type="number" v-model.number="customInflationRate" @input="validateInput('customInflationRate')" />
+          <small>e.g., enter numbers only. No symbols.</small>
+          <span v-if="errors.customInflationRate" class="error">{{ errors.customInflationRate }}</span>
         </label>
   
         <div class="button-row">
-          <button class="calculate-button" @click="generateProjection">Calculate</button>
+          <button class="calculate-button" @click="generateProjection" :disabled="hasErrors">Calculate</button>
           <button class="reset-button" @click="resetCalculator">Reset</button>
         </div>
       </div>
@@ -40,36 +68,37 @@
           <h2>Summary</h2>
           <p><strong>User Contributions:</strong> {{ formatCurrency(animatedTotalInvested) }}</p>
           <p><strong>Total Interest:</strong> {{ formatCurrency(animatedTotalInterest) }}</p>
-          <p><strong>Total Value:</strong> {{ formatCurrency(animatedFinalAccountValue) }}</p>
+          <p><strong>Total Value ({{ inflationAdjustmentEnabled ? 'Inflation-Adjusted' : 'Nominal' }}):</strong> {{ formatCurrency(animatedFinalAccountValue) }}</p>
         </div>
   
         <div class="chart-container">
           <canvas id="investmentChart"></canvas>
         </div>
       </div>
+  
+      <div class="calculation-method">
+        <p><strong>Calculation Notes:</strong></p>
+        <p>Monthly contributions are compounded based on selected frequency.</p>
+        <p v-if="inflationAdjustmentEnabled">Inflation is applied using user-defined rate of {{ customInflationRate }}%.</p>
+        <p v-else>No inflation adjustment is currently applied.</p>
+      </div>
     </div>
   </template>
   
   <script setup>
-  import { ref, onMounted, nextTick } from 'vue'
+  import { ref, computed, onMounted, nextTick } from 'vue'
   import { Chart, registerables } from 'chart.js'
-  
   Chart.register(...registerables)
   
-  // Props from parent
-  const props = defineProps({
-    darkMode: {
-      type: Boolean,
-      default: true,
-    }
-  })
-  
-  // State
+  // States
   const initialInvestment = ref(1000)
   const monthlyContribution = ref(500)
   const growthRate = ref(7)
   const years = ref(30)
   const compoundingFrequency = ref('yearly')
+  
+  const inflationAdjustmentEnabled = ref(false)
+  const customInflationRate = ref(2)
   
   const totalInvested = ref(0)
   const finalAccountValue = ref(0)
@@ -81,25 +110,47 @@
   
   let investmentChart = null
   
-  // Lifecycle
-  onMounted(async () => {
-    await nextTick()
-    generateProjection()
+  const errors = ref({
+    initialInvestment: '',
+    monthlyContribution: '',
+    growthRate: '',
+    years: '',
+    customInflationRate: '',
   })
   
-  // Helpers
+  // Validation
+  const validateInput = (field) => {
+    const valueMap = {
+      initialInvestment: initialInvestment.value,
+      monthlyContribution: monthlyContribution.value,
+      growthRate: growthRate.value,
+      years: years.value,
+      customInflationRate: customInflationRate.value,
+    }
+  
+    const value = valueMap[field]
+    if (value === '' || value === null || isNaN(value)) {
+      errors.value[field] = 'Value required and must be a number.'
+    } else if (value < 0) {
+      errors.value[field] = 'Negative values are not allowed.'
+    } else if (value > 10000000) {
+      errors.value[field] = 'Value is too high.'
+    } else {
+      errors.value[field] = ''
+    }
+  }
+  
+  const hasErrors = computed(() => {
+    return Object.values(errors.value).some(error => error !== '')
+  })
+  
+  // Formatter
   const formatCurrency = (value) => {
     if (isNaN(value)) return '—'
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value)
   }
   
-  const getGradient = (ctx, color) => {
-    const gradient = ctx.createLinearGradient(0, 0, 0, 400)
-    gradient.addColorStop(0, color)
-    gradient.addColorStop(1, 'rgba(255, 255, 255, 0)')
-    return gradient
-  }
-  
+  // Animation helper
   const animateValue = (targetRef, newValue) => {
     const duration = 800
     const frameDuration = 1000 / 60
@@ -118,19 +169,22 @@
     }, frameDuration)
   }
   
-  // Chart
+  // Chart generation
   const generateProjection = () => {
+    if (hasErrors.value) return
+  
     const canvas = document.getElementById('investmentChart')
     if (!canvas) return
   
     if (investmentChart) {
       investmentChart.destroy()
+      investmentChart = null
     }
   
     const ctx = canvas.getContext('2d')
   
-    const lineColor = props.darkMode ? 'rgba(75, 192, 192, 1)' : 'rgba(54, 162, 235, 1)'
-    const fillColor = props.darkMode ? 'rgba(75, 192, 192, 0.2)' : 'rgba(54, 162, 235, 0.2)'
+    const lineColor = 'rgba(75, 192, 192, 1)'
+    const fillColor = 'rgba(75, 192, 192, 0.2)'
     const investedLineColor = 'rgba(255, 99, 132, 1)'
     const investedFillColor = 'rgba(255, 99, 132, 0.2)'
   
@@ -151,10 +205,15 @@
       currentValue = (currentValue + periodicContribution) * (1 + (growthRate.value / 100 / compoundingPeriodsPerYear))
       cumulativeContributions += periodicContribution
   
-      const label = compoundingFrequency.value === 'monthly' ? `Month ${period}` : `Year ${period}`
-      labels.push(label)
-      totalInvestedData.push(Math.round(cumulativeContributions))
-      accountValueData.push(Math.round(currentValue))
+      let inflationFactor = 1
+      if (inflationAdjustmentEnabled.value) {
+        const yearIndex = Math.floor(period / compoundingPeriodsPerYear)
+        inflationFactor = Math.pow(1 + customInflationRate.value / 100, yearIndex)
+      }
+  
+      labels.push(compoundingFrequency.value === 'monthly' ? `Month ${period}` : `Year ${period}`)
+      totalInvestedData.push(Math.round(cumulativeContributions / inflationFactor))
+      accountValueData.push(Math.round(currentValue / inflationFactor))
     }
   
     investmentChart = new Chart(ctx, {
@@ -175,7 +234,7 @@
             label: 'Total Value ($):',
             data: accountValueData,
             borderColor: lineColor,
-            backgroundColor: getGradient(ctx, fillColor),
+            backgroundColor: fillColor,
             fill: true,
             tension: 0.4,
             pointRadius: 0,
@@ -193,11 +252,6 @@
             position: 'nearest',
             callbacks: {
               label: (context) => `${context.dataset.label}: ${formatCurrency(context.parsed.y)}`,
-              labelTextColor: (context) => context.dataset.borderColor,
-              labelColor: (context) => ({
-                borderColor: context.dataset.borderColor,
-                backgroundColor: context.dataset.borderColor,
-              }),
             },
           },
         },
@@ -216,18 +270,23 @@
       },
     })
   
-    animateValue(animatedTotalInvested, cumulativeContributions)
-    animateValue(animatedFinalAccountValue, currentValue)
-    animateValue(animatedTotalInterest, currentValue - cumulativeContributions)
+    totalInvested.value = totalInvestedData[totalInvestedData.length - 1]
+    finalAccountValue.value = accountValueData[accountValueData.length - 1]
+    totalInterest.value = finalAccountValue.value - totalInvested.value
+  
+    animateValue(animatedTotalInvested, totalInvested.value)
+    animateValue(animatedFinalAccountValue, finalAccountValue.value)
+    animateValue(animatedTotalInterest, totalInterest.value)
   }
   
-  // Reset
   const resetCalculator = () => {
     initialInvestment.value = 1000
-    monthlyContribution.value = 0
+    monthlyContribution.value = 500
     growthRate.value = 7
     years.value = 30
     compoundingFrequency.value = 'yearly'
+    inflationAdjustmentEnabled.value = false
+    customInflationRate.value = 2
   
     totalInvested.value = 0
     finalAccountValue.value = 0
@@ -237,15 +296,24 @@
     animatedFinalAccountValue.value = 0
     animatedTotalInterest.value = 0
   
+    Object.keys(errors.value).forEach(field => errors.value[field] = '')
+  
     if (investmentChart) {
       investmentChart.destroy()
       investmentChart = null
     }
   }
+  
+  onMounted(async () => {
+    await nextTick()
+    generateProjection()
+  })
   </script>
   
+  
   <style scoped>
-  .investment-calculator {
+  /* Shared Container */
+  .calculator-container {
     width: 100%;
     max-width: 900px;
     margin: 1rem auto;
@@ -255,6 +323,7 @@
     box-sizing: border-box;
   }
   
+  /* Header */
   .header {
     margin-bottom: 2rem;
   }
@@ -264,6 +333,7 @@
     font-size: 1.8rem;
   }
   
+  /* Form Styling */
   .form-stacked {
     display: flex;
     flex-direction: column;
@@ -291,6 +361,7 @@
     box-sizing: border-box;
   }
   
+  /* Buttons Row */
   .button-row {
     display: flex;
     gap: 0.75rem;
@@ -325,6 +396,7 @@
     background-color: #d32f2f;
   }
   
+  /* Chart Summary Container */
   .chart-summary-container {
     display: flex;
     flex-wrap: wrap;
@@ -350,6 +422,7 @@
     margin: 0.3rem 0;
   }
   
+  /* Chart Container */
   .chart-container {
     width: 100%;
     max-width: 100%;
@@ -363,6 +436,19 @@
     height: auto !important;
   }
   
+  /* Calculation Notes */
+  .calculation-method {
+    margin-top: -0.5rem;
+    text-align: center;
+    font-size: 0.85rem;
+    line-height: 1.3;
+  }
+  
+  .calculation-method p {
+    margin: 0.2rem 0;
+  }
+  
+  /* Responsive */
   @media (max-width: 768px) {
     .form-stacked {
       width: 90%;
