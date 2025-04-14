@@ -3,16 +3,22 @@
       <div class="header">
         <h1>Financial Tools Dashboard</h1>
   
-        <label class="switch" :class="{ dark: darkMode }" :title="darkMode ? 'Switch to Light' : 'Switch to Dark'">
-          <input type="checkbox" v-model="darkMode" />
-          <span class="slider round">
-            <span class="slider-icon">
-              <span v-if="darkMode">🌙</span>
-              <span v-else>☀️</span>
-            </span>
-            <span class="mode-label">{{ darkMode ? 'DARK' : 'LIGHT' }}</span>
-          </span>
-        </label>
+        <label
+  class="switch"
+  :class="{ dark: darkMode }"
+  :title="darkMode ? 'Switch to Light' : 'Switch to Dark'"
+  style="display: none;"
+>
+  <input type="checkbox" v-model="darkMode" />
+  <span class="slider round">
+    <span class="slider-icon">
+      <span v-if="darkMode">🌙</span>
+      <span v-else>☀️</span>
+    </span>
+    <span class="mode-label">{{ darkMode ? 'DARK' : 'LIGHT' }}</span>
+  </span>
+</label>
+
       </div>
   
       <div class="tab-buttons">
