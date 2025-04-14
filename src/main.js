@@ -1,5 +1,6 @@
 import { createApp } from 'vue'
 import './style.css'
-import InvestmentCalculator from './InvestmentGrowthCalculator.vue'
+import Dashboard from './components/Dashboard.vue'
 
-createApp(InvestmentCalculator).mount('#app')
+createApp(Dashboard).mount('#app')
+
