@@ -28,6 +28,10 @@
         <button :class="{ active: activeTab === 'retirement' }" @click="switchTab('retirement')">
           Retirement Forecast & Reports
         </button>
+        <button :class="{ active: activeTab === 'budget' }" @click="switchTab('budget')">
+          Budget Planner
+</button>
+
       </div>
   
       <!-- ✅ Important: assign the ref -->
@@ -39,6 +43,8 @@
   import { ref, watch, computed, nextTick } from 'vue'
   import InvestmentCalculator from './InvestmentCalculator.vue'
   import RetirementCalculator from './RetirementCalculator.vue'
+  import BudgetPlanner from './BudgetPlanner.vue'
+
   
   const darkMode = ref(true)
   watch(darkMode, (newVal) => {
@@ -48,9 +54,13 @@
   const activeTab = ref('investment')
   const activeComponentRef = ref(null)
   
-  const activeComponent = computed(() => {
-    return activeTab.value === 'investment' ? InvestmentCalculator : RetirementCalculator
-  })
+const activeComponent = computed(() => {
+  if (activeTab.value === 'investment') return InvestmentCalculator
+  if (activeTab.value === 'retirement') return RetirementCalculator
+  if (activeTab.value === 'budget') return BudgetPlanner
+})
+
+
   
   async function switchTab(tab) {
     activeTab.value = tab
